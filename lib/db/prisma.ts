@@ -1,3 +1,8 @@
+// Fails the build with a clear message if this is ever imported into a
+// client bundle. Without it the error is an opaque "Can't resolve 'dns'"
+// from deep inside the pg driver.
+import "server-only";
+
 import { PrismaPg } from "@prisma/adapter-pg";
 
 // Prisma 7 emits the client into the repo (see prisma/schema.prisma `output`),

@@ -64,7 +64,11 @@ try {
       console.log(`  skip  ${table_name} (exempt: Prisma migration bookkeeping)`);
       continue;
     }
-    rls ? pass(`RLS enabled on ${table_name}`) : fail(`RLS NOT enabled on ${table_name}`);
+    if (rls) {
+      pass(`RLS enabled on ${table_name}`);
+    } else {
+      fail(`RLS NOT enabled on ${table_name}`);
+    }
   }
 
   // --- 2. No grants to the public-facing roles ----------------------------
@@ -106,9 +110,11 @@ try {
     "on_auth_user_updated",
     "on_auth_user_deleted",
   ]) {
-    names.includes(expected)
-      ? pass(`${expected} present`)
-      : fail(`${expected} MISSING — profiles will drift from auth.users`);
+    if (names.includes(expected)) {
+      pass(`${expected} present`);
+    } else {
+      fail(`${expected} MISSING — profiles will drift from auth.users`);
+    }
   }
 
   // --- 4. End-to-end: the publishable key must read nothing ---------------

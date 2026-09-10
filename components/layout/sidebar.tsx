@@ -7,45 +7,71 @@ import {
   FolderKanban,
   Inbox,
   LayoutDashboard,
+  LogOut,
   Settings,
   Target,
   Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTransition } from "react";
 
+import { WorkspaceSwitcher } from "@/components/layout/workspace-switcher";
+import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { signOut } from "@/lib/auth/auth-actions";
+import { can, type Capability } from "@/lib/auth/rbac";
+import type { Membership, SessionUser } from "@/lib/auth/session";
 import { usePersistedFlag } from "@/lib/hooks/use-persisted-flag";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+/**
+ * Nav items, some gated by capability.
+ *
+ * Hiding what someone cannot use keeps the sidebar honest — a GUEST seeing a
+ * "Team" link that 403s is a worse experience than not seeing it. This is
+ * presentation only: the actual enforcement is in `authedAction`, and hiding a
+ * link is never a substitute for that.
+ */
+const NAV: { href: string; label: string; icon: typeof Inbox; capability?: Capability }[] = [
   { href: "/home", label: "Home", icon: LayoutDashboard },
   { href: "/inbox", label: "Inbox", icon: Inbox },
   { href: "/my-tasks", label: "My tasks", icon: CalendarCheck },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/goals", label: "Goals", icon: Target },
-  { href: "/reports", label: "Reports", icon: BarChart3 },
-  { href: "/team", label: "Team", icon: Users },
-  { href: "/settings", label: "Settings", icon: Settings },
-] as const;
+  { href: "/reports", label: "Reports", icon: BarChart3, capability: "report.view" },
+  { href: "/team", label: "Team", icon: Users, capability: "member.view" },
+  { href: "/settings/profile", label: "Settings", icon: Settings },
+];
 
 const STORAGE_KEY = "ash:sidebar-collapsed";
 
 /**
  * Primary navigation.
  *
- * Flat surface, no glass: the sidebar is always present, and backdrop-filter on
- * a permanent full-height element is wasted GPU work every frame.
+ * Flat surface, no glass: the sidebar is always on screen, and
+ * backdrop-filter on a permanent full-height element is wasted GPU work on
+ * every frame.
  *
- * Collapse state is persisted in localStorage and read through
- * `useSyncExternalStore`, which keeps it hydration-safe without a second
- * render — and makes the state follow across browser tabs.
+ * Collapse state is persisted through `useSyncExternalStore`, which keeps it
+ * hydration-safe without a second render and makes it follow across tabs.
  */
-export function Sidebar() {
+export function Sidebar({
+  user,
+  workspace,
+  memberships,
+}: {
+  user: SessionUser;
+  workspace: Membership;
+  memberships: Membership[];
+}) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = usePersistedFlag(STORAGE_KEY, false);
+  const [signingOut, startSignOut] = useTransition();
 
-  const toggle = () => setCollapsed(!collapsed);
+  const visible = NAV.filter(
+    (item) => !item.capability || can(workspace.role, item.capability),
+  );
 
   return (
     <aside
@@ -56,16 +82,12 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-60",
       )}
     >
-      {/* Brand */}
-      <div className="flex h-14 items-center gap-2 px-3">
-        <div className="bg-accent text-accent-ink font-display grid size-8 shrink-0 place-items-center rounded-[--radius-md] text-sm font-bold">
-          A
-        </div>
-        {!collapsed && <span className="font-display truncate text-lg font-semibold">Ash</span>}
+      <div className="border-border border-b p-2">
+        <WorkspaceSwitcher active={workspace} memberships={memberships} collapsed={collapsed} />
       </div>
 
-      <nav className="flex-1 space-y-0.5 px-2 py-2">
-        {NAV.map(({ href, label, icon: Icon }) => {
+      <nav aria-label="Main" className="flex-1 space-y-0.5 overflow-y-auto px-2 py-2">
+        {visible.map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
@@ -89,12 +111,38 @@ export function Sidebar() {
         })}
       </nav>
 
-      <div className="border-border border-t p-2">
+      <div className="border-border space-y-1 border-t p-2">
+        <div
+          className={cn(
+            "flex items-center gap-2 px-1 py-1",
+            collapsed && "justify-center px-0",
+          )}
+        >
+          <Avatar email={user.email} size="sm" />
+          {!collapsed && (
+            <span className="text-muted min-w-0 flex-1 truncate text-xs">{user.email}</span>
+          )}
+        </div>
+
+        <form action={() => startSignOut(() => signOut())}>
+          <Button
+            type="submit"
+            variant="ghost"
+            size={collapsed ? "icon" : "sm"}
+            disabled={signingOut}
+            className={cn("w-full justify-start", collapsed && "w-9 justify-center")}
+            aria-label="Sign out"
+          >
+            <LogOut />
+            {!collapsed && <span>{signingOut ? "Signing out…" : "Sign out"}</span>}
+          </Button>
+        </form>
+
         <Button
           variant="ghost"
           size={collapsed ? "icon" : "sm"}
-          onClick={toggle}
-          className={cn("w-full", collapsed && "w-9")}
+          onClick={() => setCollapsed(!collapsed)}
+          className={cn("w-full justify-start", collapsed && "w-9 justify-center")}
           aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         >
           <ChevronsLeft

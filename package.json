@@ -24,7 +24,8 @@
     "db:push": "prisma db push",
     "verify": "npm run typecheck && npm run lint && npm run lint:colors && npm run audit:contrast && npm run test",
     "db:check": "node scripts/db-healthcheck.mts",
-    "verify:security": "node scripts/verify-security.mts"
+    "verify:security": "node scripts/verify-security.mts",
+    "dev:user": "node scripts/dev-user.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
@@ -45,6 +46,7 @@
     "pg": "^8.23.0",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "server-only": "^0.0.1",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.6.0"

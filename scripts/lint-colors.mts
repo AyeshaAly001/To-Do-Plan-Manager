@@ -67,7 +67,13 @@ for (const root of ROOTS) {
     const lines = readFileSync(file, "utf8").split("\n");
 
     lines.forEach((line, i) => {
+      // Accept the marker on this line OR the one above it. The
+      // previous-line form is what people expect (it mirrors
+      // eslint-disable-next-line), and it is the only workable option when the
+      // value sits inside JSX attributes, which cannot carry a trailing
+      // comment.
       if (line.includes(ESCAPE_HATCH)) return;
+      if (i > 0 && lines[i - 1]!.includes(ESCAPE_HATCH)) return;
       // Shadow tints are declared as bare channel triples (`42 39 36`) and
       // consumed via rgb(var(--shadow-rgb) / a); the rgb() there wraps a token.
       if (/rgba?\(\s*var\(--/.test(line)) return;

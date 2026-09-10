@@ -7,8 +7,18 @@ import { expect, test } from "@playwright/test";
  */
 
 test.describe("design system", () => {
-  test("root redirects to the design reference", async ({ page }) => {
+  test("root routes by auth state, not to the design reference", async ({ page }) => {
+    // Phase 1 changed this: `/` used to land on /design because that was all
+    // that existed. It now routes by session — anonymous to /login, signed in
+    // to /home.
     await page.goto("/");
+    await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("the design reference stays publicly reachable", async ({ page }) => {
+    // It lives outside the `(app)` group precisely so it renders without a
+    // session or a workspace.
+    await page.goto("/design");
     await expect(page).toHaveURL(/\/design$/);
     await expect(page.getByRole("heading", { name: "Design system", level: 1 })).toBeVisible();
   });

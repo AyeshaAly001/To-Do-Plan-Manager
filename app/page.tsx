@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation";
 
+import { getCurrentUser } from "@/lib/auth/session";
+
 /**
- * Phase 0: the only thing built is the design system, so land there.
- * Phase 1 replaces this with an auth check — session -> /home, otherwise
- * -> /login.
+ * Entry point.
+ *
+ * Signed in -> the app. Otherwise -> sign in. The app shell then decides
+ * whether they need onboarding, so that branch does not have to be duplicated
+ * here.
  */
-export default function RootPage() {
-  redirect("/design");
+export default async function RootPage() {
+  const user = await getCurrentUser();
+  redirect(user ? "/home" : "/login");
 }
