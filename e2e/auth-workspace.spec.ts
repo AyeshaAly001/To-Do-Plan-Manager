@@ -52,8 +52,12 @@ test.describe("unauthenticated access", () => {
     await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
     await expect(page.getByLabel("Email")).toBeVisible();
     await expect(page.getByLabel("Password")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Google" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "GitHub" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Continue with Google" })).toBeVisible();
+    // GitHub sign-in was removed on purpose. Asserted absent rather than just
+    // dropped, so putting the button back has to be a deliberate change to
+    // this test too — `name` matches on substring, so an exact matcher is
+    // needed for a negative assertion to mean anything.
+    await expect(page.getByRole("button", { name: "GitHub", exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: /sign-in link instead/i })).toBeVisible();
   });
 
