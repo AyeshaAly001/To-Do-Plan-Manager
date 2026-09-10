@@ -161,7 +161,13 @@ if (dbPassword) {
   const encoded = encodeURIComponent(dbPassword);
   const region = argValue("--region") ?? "ap-northeast-1";
   const pooled = `postgresql://postgres.${ref}:${encoded}@aws-0-${region}.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1`;
-  const direct = `postgresql://postgres.${ref}:${encoded}@aws-0-${region}.pooler.supabase.com:5432/postgres`;
+  // Migrations use the CLASSIC DIRECT endpoint, not the pooler's port 5432.
+  // The pooler's session-mode port proved unreliable for Prisma's migrate
+  // engine (intermittent P1001 even while TCP-reachable), and the direct host
+  // is what Supabase documents for migrations. Note the username differs:
+  // direct is plain `postgres`, the pooler is `postgres.<ref>`.
+  // Caveat: db.<ref>.supabase.co is IPv6-only unless the IPv4 add-on is on.
+  const direct = `postgresql://postgres:${encoded}@db.${ref}.supabase.co:5432/postgres`;
   env = setValue(env, "DATABASE_URL", pooled);
   env = setValue(env, "DIRECT_URL", direct);
 }

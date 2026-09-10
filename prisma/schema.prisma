@@ -1,32 +1,225 @@
 // Ash — schema
 //
-// Phase 0 establishes only the connection and one table, to prove the Prisma
-// round-trip works against Supabase. The full ~24-table model (workspaces,
-// projects, tasks, comments, activity, goals, time entries) lands in Phases 1–5.
+// Phase 1: identity and multi-tenancy. Projects, tasks, comments, goals and
+// time tracking arrive in Phases 2–5.
 //
 // Connection config lives in ../prisma.config.ts (Prisma 7 removed `url` and
 // `directUrl` from the schema). Migrations use DIRECT_URL (:5432, session
 // mode); the runtime client uses DATABASE_URL (:6543, pooled) via the pg
 // driver adapter in lib/db/prisma.ts.
+//
+// AUTHORIZATION: this client connects with the database credential and so
+// bypasses RLS. RLS is enabled deny-all on every table purely as leak
+// insurance for the publishable key. Real authorization lives in
+// lib/auth/action.ts — nothing may query the database around it.
 
-// Prisma 7 generates a typed client into the repo rather than into
-// node_modules/@prisma/client, so the output path is explicit and the
-// generated directory is gitignored.
 generator client {
   provider = "prisma-client"
   output   = "../lib/generated/prisma"
 }
 
 datasource db {
-  provider  = "postgresql"
+  provider = "postgresql"
 }
 
-/// Health marker written by the keepalive cron. Doubles as the Phase 0
-/// round-trip check: if this table can be read and written, the pooled and
-/// direct connections and the migration path are all wired correctly.
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+/// Application-side user record.
+///
+/// `id` mirrors `auth.users.id`, which Supabase owns. Prisma does not manage
+/// the `auth` schema, so there is no FK here — the link is enforced by a
+/// Postgres trigger on `auth.users` that inserts the matching row (see the
+/// migration). That means a Profile always exists by the time any app code
+/// runs, so callers never have to handle a missing profile.
+model Profile {
+  id        String  @id @db.Uuid
+  email     String  @unique
+  fullName  String? @map("full_name")
+  avatarUrl String? @map("avatar_url")
+
+  /// IANA zone, e.g. "Asia/Karachi". All timestamps are stored UTC and
+  /// rendered in this zone — getting it wrong makes "Today" and every
+  /// due-date dashboard subtly incorrect.
+  timezone String @default("UTC")
+
+  /// Used by the workload dashboard (Phase 6) to compute over-allocation.
+  weeklyCapacityHours Int @default(40) @map("weekly_capacity_hours")
+
+  /// Per-type email preferences, e.g. { "mention": true, "digest": false }.
+  notificationPrefs Json @default("{}") @map("notification_prefs")
+
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  memberships       WorkspaceMember[]
+  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
+  sentInvitations   Invitation[]      @relation("InvitationInviter")
+  activities        ActivityLog[]
+  notifications     Notification[]
+
+  @@map("profiles")
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+  GUEST
+
+  @@map("workspace_role")
+}
+
+/// The tenant boundary. Every domain row in later phases hangs off a
+/// workspace, directly or transitively.
+model Workspace {
+  id      String  @id @default(uuid()) @db.Uuid
+  name    String
+  /// URL-safe identifier used in paths, e.g. /w/acme/projects.
+  slug    String  @unique
+  logoUrl String? @map("logo_url")
+
+  ownerId String  @map("owner_id") @db.Uuid
+  owner   Profile @relation("WorkspaceOwner", fields: [ownerId], references: [id])
+
+  /// Workspace-level settings (week start, default view, etc.).
+  settings Json @default("{}")
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  /// Soft delete: keeps audit history intact and makes recovery possible.
+  archivedAt DateTime? @map("archived_at")
+
+  members     WorkspaceMember[]
+  invitations Invitation[]
+  activities  ActivityLog[]
+
+  @@index([ownerId])
+  @@map("workspaces")
+}
+
+/// Membership plus role. The pair is unique, so a profile holds exactly one
+/// role per workspace.
+model WorkspaceMember {
+  id String @id @default(uuid()) @db.Uuid
+
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  profileId String  @map("profile_id") @db.Uuid
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  role WorkspaceRole @default(MEMBER)
+
+  joinedAt DateTime @default(now()) @map("joined_at")
+
+  @@unique([workspaceId, profileId])
+  // Powers "which workspaces am I in?" on every request.
+  @@index([profileId])
+  @@index([workspaceId, role])
+  @@map("workspace_members")
+}
+
+/// Pending invitation. Deliberately keyed by email rather than profile, so
+/// someone can be invited before they have an account.
+model Invitation {
+  id String @id @default(uuid()) @db.Uuid
+
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  email String
+  role  WorkspaceRole @default(MEMBER)
+
+  /// Random, single-use, and stored HASHED — a leaked database dump must not
+  /// yield usable invitation links.
+  tokenHash String @unique @map("token_hash")
+
+  invitedById String  @map("invited_by_id") @db.Uuid
+  invitedBy   Profile @relation("InvitationInviter", fields: [invitedById], references: [id])
+
+  expiresAt  DateTime  @map("expires_at")
+  acceptedAt DateTime? @map("accepted_at")
+  revokedAt  DateTime? @map("revoked_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // One live invite per email per workspace; re-inviting replaces the old row.
+  @@unique([workspaceId, email])
+  @@index([email])
+  @@map("invitations")
+}
+
+// ---------------------------------------------------------------------------
+// Audit and notification
+// ---------------------------------------------------------------------------
+
+/// Append-only audit trail, written by the `authedAction` wrapper rather than
+/// by individual handlers — so an action cannot silently skip being recorded.
+/// Powers every activity feed in the app.
+model ActivityLog {
+  id String @id @default(uuid()) @db.Uuid
+
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  /// Null for system-initiated actions (cron, webhooks).
+  actorId String?  @map("actor_id") @db.Uuid
+  actor   Profile? @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  /// e.g. "workspace" | "task" | "member"
+  entityType String @map("entity_type")
+  entityId   String @map("entity_id")
+  /// e.g. "created" | "updated" | "deleted" | "role_changed"
+  action     String
+
+  /// Field-level before/after, so feeds can render "changed due date from X
+  /// to Y" without re-querying.
+  diff Json @default("{}")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Feeds are always "latest first, scoped to a workspace".
+  @@index([workspaceId, createdAt(sort: Desc)])
+  @@index([entityType, entityId])
+  @@map("activity_log")
+}
+
+model Notification {
+  id String @id @default(uuid()) @db.Uuid
+
+  recipientId String  @map("recipient_id") @db.Uuid
+  recipient   Profile @relation(fields: [recipientId], references: [id], onDelete: Cascade)
+
+  /// e.g. "mention" | "assigned" | "invitation" | "due_soon"
+  type    String
+  payload Json   @default("{}")
+
+  readAt    DateTime? @map("read_at")
+  /// Set once the digest/immediate email has gone out, so we never send twice.
+  emailedAt DateTime? @map("emailed_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Drives the unread badge.
+  @@index([recipientId, readAt])
+  @@map("notifications")
+}
+
+// ---------------------------------------------------------------------------
+// Ops
+// ---------------------------------------------------------------------------
+
+/// Health marker written by the keepalive cron, which stops the Supabase free
+/// tier pausing after 7 days without database activity.
 model SystemHealth {
   id        String   @id @default(uuid()) @db.Uuid
-  checkedAt DateTime @default(now())
+  checkedAt DateTime @default(now()) @map("checked_at")
   note      String?
 
   @@map("system_health")

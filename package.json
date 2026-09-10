@@ -23,7 +23,8 @@
     "db:studio": "prisma studio",
     "db:push": "prisma db push",
     "verify": "npm run typecheck && npm run lint && npm run lint:colors && npm run audit:contrast && npm run test",
-    "db:check": "node scripts/db-healthcheck.mts"
+    "db:check": "node scripts/db-healthcheck.mts",
+    "verify:security": "node scripts/verify-security.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
