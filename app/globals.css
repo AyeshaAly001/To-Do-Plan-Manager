@@ -1,0 +1,351 @@
+@import "tailwindcss";
+
+/* next-themes writes class="dark" on <html>; wire Tailwind's dark: to it. */
+@custom-variant dark (&:is(.dark *));
+
+/* ===========================================================================
+   PAPER & CLAY  —  design tokens
+   ---------------------------------------------------------------------------
+   Concept: a well-made paper planner, with real depth. Warm paper surfaces,
+   handwritten headings, one clay accent. Glass / depth / motion are applied
+   only where they express something functional (see the utilities below).
+
+   Every value is OKLCH so tints stay perceptually even. NOTHING in
+   components/ may hardcode a color — always go through a token.
+
+   These values are contrast-solved, not eyeballed. `scripts/audit-contrast.mts`
+   is the gate and holds the same palette; if you change a token here, change it
+   there and run `npm run audit:contrast`.
+   =========================================================================== */
+
+:root {
+  /* --- surfaces (warm paper) ------------------------------------------- */
+  --bg: oklch(97.98% 0.0045 78.3); /* #FAF8F5  page ground   */
+  --surface: oklch(100% 0 0); /* #FFFFFF  raised card  */
+  --surface-2: oklch(96.21% 0.0074 80.72); /* #F5F2ED  recessed well */
+
+  /* --- text ------------------------------------------------------------ */
+  --ink: oklch(27.49% 0.007 67.53); /* #2A2724  primary   */
+  --muted: oklch(53.82% 0.0177 67.44); /* #756C63  secondary */
+
+  /* --- lines ------------------------------------------------------------
+     --border is DECORATIVE (dividers, hairlines) and intentionally faint.
+     --border-strong is for form-control boundaries, which must clear the
+     WCAG 1.4.11 3:1 non-text minimum on every surface. Don't swap them. */
+  --border: oklch(91.78% 0.0109 76.59); /* #E8E3DC */
+  --border-strong: oklch(63.39% 0.0106 72.61); /* #8E8983 */
+
+  /* --- accent (clay) ---------------------------------------------------- */
+  --accent: oklch(54.77% 0.1105 38.86); /* #A6583E */
+  --accent-soft: oklch(92.83% 0.0174 44.8); /* #F2E4DE  tint / selected row */
+  --accent-ink: oklch(100% 0 0); /* #FFFFFF  label on accent fill */
+
+  /* --- semantic (these carry meaning; kept distinct from the accent) ---- */
+  --success: oklch(47.89% 0.0695 155.1); /* #3B694C */
+  --warning: oklch(48.94% 0.1 80.87); /* #7D5903 */
+  --danger: oklch(50.2% 0.1455 14.59); /* #A63749 */
+  --info: oklch(48.69% 0.0569 250.8); /* #47627F */
+
+  /* --- shadow tint -----------------------------------------------------
+     Warm-tinted, never pure black: black over warm paper reads as dirt. */
+  --shadow-rgb: 42 39 36;
+
+  /* --- elevation ladder — exactly four steps ---------------------------
+     rest -> hover -> floating -> dragging. Anything needing a fifth step
+     is a design smell; reconsider the hierarchy instead. */
+  --elev-rest: 0 1px 2px rgb(var(--shadow-rgb) / 0.04);
+  --elev-hover:
+    0 2px 4px rgb(var(--shadow-rgb) / 0.05), 0 6px 14px -6px rgb(var(--shadow-rgb) / 0.08);
+  --elev-float:
+    0 1px 2px rgb(var(--shadow-rgb) / 0.04), 0 12px 32px -10px rgb(var(--shadow-rgb) / 0.14);
+  --elev-drag:
+    0 2px 6px rgb(var(--shadow-rgb) / 0.08), 0 22px 48px -12px rgb(var(--shadow-rgb) / 0.22);
+
+  /* Scrim behind any glass surface, so text over it keeps its contrast. */
+  --scrim: rgb(var(--shadow-rgb) / 0.28);
+
+  /* --- radii — soft, echoing the font's roundness; never pill ----------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+
+  /* --- motion ----------------------------------------------------------- */
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --dur-fast: 120ms; /* hover, press            */
+  --dur-mid: 220ms; /* panels, drawers, modals */
+  --dur-slow: 320ms; /* page / view transition  */
+}
+
+.dark {
+  --bg: oklch(21.09% 0.0037 48.54); /* #1A1817 */
+  --surface: oklch(25.07% 0.0049 39.39); /* #242120 */
+  --surface-2: oklch(28.86% 0.0069 48.47); /* #2E2A28 */
+
+  --ink: oklch(95.31% 0.0074 80.72); /* #F2EFEA */
+  --muted: oklch(67.44% 0.0191 72.99); /* #9E958A */
+
+  --border: oklch(30.83% 0.0078 59.38); /* #332F2C */
+  --border-strong: oklch(56.31% 0.008 67.65); /* #797570 */
+
+  --accent: oklch(69.75% 0.096 43.94); /* #D08A6C */
+  --accent-soft: oklch(30.18% 0.0263 41.49); /* #3A2A24 */
+  /* On dark, the accent is a LIGHT fill — its label must be the dark ground,
+     not --ink. (--ink on --accent is only 2.4:1.) */
+  --accent-ink: oklch(21.09% 0.0037 48.54); /* #1A1817 */
+
+  --success: oklch(73.06% 0.0623 155.09); /* #89B497 */
+  --warning: oklch(73.75% 0.1048 83.15); /* #CAA458 */
+  --danger: oklch(75.01% 0.1351 15.14); /* #F78892 */
+  --info: oklch(73.76% 0.0484 244.52); /* #91AEC7 */
+
+  /* Dark needs true-black shadows at higher opacity to read at all. */
+  --shadow-rgb: 0 0 0;
+  --elev-rest: 0 1px 2px rgb(0 0 0 / 0.3);
+  --elev-hover: 0 2px 4px rgb(0 0 0 / 0.34), 0 6px 14px -6px rgb(0 0 0 / 0.4);
+  --elev-float: 0 1px 2px rgb(0 0 0 / 0.34), 0 12px 32px -10px rgb(0 0 0 / 0.5);
+  --elev-drag: 0 2px 6px rgb(0 0 0 / 0.4), 0 22px 48px -12px rgb(0 0 0 / 0.6);
+  --scrim: rgb(0 0 0 / 0.5);
+}
+
+/* ===========================================================================
+   Tailwind theme mapping
+   `inline` matters: it makes utilities resolve var() at the use site, so the
+   same `bg-surface` follows the light/dark swap instead of being frozen.
+   =========================================================================== */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-danger: var(--danger);
+  --color-info: var(--info);
+
+  /* Set on <html> by next/font in app/layout.tsx. */
+  --font-display: var(--font-playpen), ui-rounded, "Segoe UI", system-ui, sans-serif;
+  --font-ui: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
+
+  --shadow-rest: var(--elev-rest);
+  --shadow-hover: var(--elev-hover);
+  --shadow-float: var(--elev-float);
+  --shadow-drag: var(--elev-drag);
+
+  --ease-out: var(--ease-out);
+}
+
+/* ===========================================================================
+   Base layer
+   =========================================================================== */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+
+  html {
+    /* Paint the ground explicitly — never inherit it. */
+    background-color: var(--bg);
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .dark html,
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--bg);
+    color: var(--ink);
+    /* Inter is the default: most of the app is dense UI and data. */
+    font-family: var(--font-ui);
+    font-size: 0.875rem; /* 14px */
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Playpen Sans is the voice: headings and short, human copy only.
+     It runs slightly wide, so headings get tighter tracking. */
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    color: var(--ink);
+    text-wrap: balance;
+  }
+  h1 {
+    font-size: 2.25rem;
+  } /* 36 */
+  h2 {
+    font-size: 1.75rem;
+  } /* 28 */
+  h3 {
+    font-size: 1.375rem;
+  } /* 22 */
+  h4 {
+    font-size: 1.125rem;
+  } /* 18 */
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* Focus ring: always visible, never removed. 3:1+ on every surface. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Form controls use the AA-compliant border, not the decorative hairline. */
+  input,
+  textarea,
+  select {
+    font-family: var(--font-ui);
+    border-color: var(--border-strong);
+  }
+  ::placeholder {
+    color: var(--muted);
+    opacity: 1;
+  }
+
+  /* Numbers in data contexts must column-align. */
+  table,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: var(--accent-soft);
+    color: var(--ink);
+  }
+}
+
+/* ===========================================================================
+   Utilities
+   =========================================================================== */
+@layer utilities {
+  /* --- typography ------------------------------------------------------- */
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  .font-ui {
+    font-family: var(--font-ui);
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* --- glass -----------------------------------------------------------
+     ONLY for surfaces that genuinely float above content, where the blur
+     communicates layering: command palette, task drawer, sticky topbar on
+     scroll, modals, dropdowns, toasts, the card being dragged.
+
+     Do NOT put this on static cards, table rows, the sidebar, dashboard
+     tiles or chart containers — flat surfaces there keep the app calm, and
+     backdrop-filter on anything that scrolls or repaints often drops frames. */
+  .glass {
+    background: color-mix(in oklch, var(--surface) 72%, transparent);
+    /* Do NOT hand-write -webkit-backdrop-filter here. Lightning CSS treats the
+       prefixed and unprefixed forms as the same property and keeps only the
+       last one, so adding the prefix below the standard property silently
+       DELETES the standard property — and current Chromium no longer accepts
+       the prefixed alias, so glass stops blurring entirely. Lightning CSS
+       already adds prefixes from the browser targets. Covered by an e2e test. */
+    backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid color-mix(in oklch, var(--border) 60%, transparent);
+    box-shadow: var(--elev-float);
+  }
+  /* Without backdrop-filter, translucency would just make text unreadable. */
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .glass {
+      background: var(--surface);
+    }
+  }
+  .scrim {
+    background: var(--scrim);
+  }
+
+  /* --- elevation -------------------------------------------------------- */
+  .elev-rest {
+    box-shadow: var(--elev-rest);
+  }
+  .elev-hover {
+    box-shadow: var(--elev-hover);
+  }
+  .elev-float {
+    box-shadow: var(--elev-float);
+  }
+  .elev-drag {
+    box-shadow: var(--elev-drag);
+  }
+
+  /* Cards lift toward the pointer: depth as an interaction signal. */
+  .lift {
+    transition:
+      transform var(--dur-fast) var(--ease-out),
+      box-shadow var(--dur-fast) var(--ease-out);
+    box-shadow: var(--elev-rest);
+  }
+  .lift:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--elev-hover);
+  }
+
+  /* The one literal 3D transform in the app: a card picked up off the board.
+     Applied by the drag layer in the Kanban view (Phase 3). */
+  .tilt-drag {
+    transform: perspective(600px) rotate3d(1, 1, 0, 1.5deg) scale(1.02);
+    box-shadow: var(--elev-drag);
+    cursor: grabbing;
+  }
+
+  /* KPI tiles: a 1px top highlight reads as a pressed paper edge. No gradient. */
+  .paper-edge {
+    box-shadow:
+      inset 0 1px 0 color-mix(in oklch, var(--surface) 70%, white),
+      var(--elev-rest);
+  }
+
+  /* Timeline/Gantt bars sit *in* their track. */
+  .inset-bar {
+    box-shadow: inset 0 1px 2px rgb(var(--shadow-rgb) / 0.12);
+  }
+}
+
+/* ===========================================================================
+   Reduced motion — a global backstop.
+   Individual components still check the hook (see lib/motion/config.ts), but
+   this guarantees nothing keeps moving even if one forgets.
+   =========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .lift:hover {
+    transform: none;
+  }
+  .tilt-drag {
+    transform: none;
+  }
+}

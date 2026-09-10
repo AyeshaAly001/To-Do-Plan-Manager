@@ -1,0 +1,33 @@
+// Ash — schema
+//
+// Phase 0 establishes only the connection and one table, to prove the Prisma
+// round-trip works against Supabase. The full ~24-table model (workspaces,
+// projects, tasks, comments, activity, goals, time entries) lands in Phases 1–5.
+//
+// Connection config lives in ../prisma.config.ts (Prisma 7 removed `url` and
+// `directUrl` from the schema). Migrations use DIRECT_URL (:5432, session
+// mode); the runtime client uses DATABASE_URL (:6543, pooled) via the pg
+// driver adapter in lib/db/prisma.ts.
+
+// Prisma 7 generates a typed client into the repo rather than into
+// node_modules/@prisma/client, so the output path is explicit and the
+// generated directory is gitignored.
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider  = "postgresql"
+}
+
+/// Health marker written by the keepalive cron. Doubles as the Phase 0
+/// round-trip check: if this table can be read and written, the pooled and
+/// direct connections and the migration path are all wired correctly.
+model SystemHealth {
+  id        String   @id @default(uuid()) @db.Uuid
+  checkedAt DateTime @default(now())
+  note      String?
+
+  @@map("system_health")
+}
