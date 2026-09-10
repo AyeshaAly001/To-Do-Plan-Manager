@@ -25,7 +25,8 @@
     "verify": "npm run typecheck && npm run lint && npm run lint:colors && npm run audit:contrast && npm run test",
     "db:check": "node scripts/db-healthcheck.mts",
     "verify:security": "node scripts/verify-security.mts",
-    "dev:user": "node scripts/dev-user.mts"
+    "dev:user": "node scripts/dev-user.mts",
+    "dev:clean": "node scripts/clean-test-data.mts"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

@@ -1,3 +1,5 @@
+import { NuqsAdapter } from "nuqs/adapters/next/app";
+
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { MotionProvider } from "@/components/motion-provider";
@@ -20,14 +22,21 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const memberships = await getMemberships(user.id);
 
   return (
-    <MotionProvider>
-      <div className="flex min-h-dvh">
-        <Sidebar user={user} workspace={workspace} memberships={memberships} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <Topbar />
-          <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">{children}</main>
+    // NuqsAdapter lets view state (grouping, filters, the open task) live in
+    // the URL, so a view is shareable and survives a refresh. Selection stays
+    // in React state — nobody wants to send a link that pre-selects rows.
+    <NuqsAdapter>
+      <MotionProvider>
+        <div className="flex min-h-dvh">
+          <Sidebar user={user} workspace={workspace} memberships={memberships} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <Topbar />
+            <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
+              {children}
+            </main>
+          </div>
         </div>
-      </div>
-    </MotionProvider>
+      </MotionProvider>
+    </NuqsAdapter>
   );
 }
