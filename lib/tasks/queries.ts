@@ -194,6 +194,7 @@ export async function searchTasks(
       number: number;
       title: string;
       status: TaskStatus;
+      project_id: string;
       project_key: string;
       project_name: string;
       rank: number;
@@ -203,6 +204,7 @@ export async function searchTasks(
            t.number,
            t.title,
            t.status,
+           p.id   AS project_id,
            p.key  AS project_key,
            p.name AS project_name,
            GREATEST(
@@ -222,4 +224,55 @@ export async function searchTasks(
      ORDER BY rank DESC, t.created_at DESC
      LIMIT ${limit}
   `;
+}
+
+/**
+ * Every task assigned to one person, across every project they can see.
+ *
+ * The bucket boundaries are computed from a caller-supplied `now` rather than
+ * inside SQL, so "today" means today in the USER's timezone. Doing it in
+ * Postgres would put the boundary wherever the database happens to live —
+ * which for this project is a different continent.
+ */
+export async function getMyTasks(profileId: string, workspace: Membership, now: Date) {
+  const tasks = await prisma.task.findMany({
+    where: {
+      assignees: { some: { profileId } },
+      archivedAt: null,
+      // Finished work leaves the list. It is visible in the project views and
+      // the dashboards; here it is only noise.
+      status: { notIn: [TaskStatus.DONE, TaskStatus.CANCELLED] },
+      project: visibleProjectsWhere(workspace, profileId),
+    },
+    // Undated tasks sort last: `nulls: "last"` matters, because Postgres puts
+    // NULLs first on ASC by default and the list would open with everything
+    // that has no date.
+    orderBy: [{ dueDate: { sort: "asc", nulls: "last" } }, { priority: "desc" }],
+    select: TASK_SELECT,
+  });
+
+  const startOfToday = new Date(now);
+  startOfToday.setHours(0, 0, 0, 0);
+  const startOfTomorrow = new Date(startOfToday);
+  startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+  const inSevenDays = new Date(startOfToday);
+  inSevenDays.setDate(inSevenDays.getDate() + 7);
+
+  const buckets = {
+    overdue: [] as TaskListItem[],
+    today: [] as TaskListItem[],
+    week: [] as TaskListItem[],
+    later: [] as TaskListItem[],
+    undated: [] as TaskListItem[],
+  };
+
+  for (const task of tasks) {
+    if (!task.dueDate) buckets.undated.push(task);
+    else if (task.dueDate < startOfToday) buckets.overdue.push(task);
+    else if (task.dueDate < startOfTomorrow) buckets.today.push(task);
+    else if (task.dueDate < inSevenDays) buckets.week.push(task);
+    else buckets.later.push(task);
+  }
+
+  return buckets;
 }

@@ -1,8 +1,12 @@
 "use client";
 
+import { CalendarDays, Columns3, List, Table2 } from "lucide-react";
 import { useQueryState } from "nuqs";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { BoardView } from "@/components/tasks/board-view";
+import { CalendarView } from "@/components/tasks/calendar-view";
+import { TableView } from "@/components/tasks/table-view";
 import { TaskDrawer, type TaskDetail } from "@/components/tasks/task-drawer";
 import {
   TaskList,
@@ -21,6 +25,15 @@ const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
   { value: "assignee", label: "Assignee" },
   { value: "due", label: "Due date" },
   { value: "none", label: "Nothing" },
+];
+
+type ViewMode = "list" | "board" | "calendar" | "table";
+
+const VIEWS: { value: ViewMode; label: string; icon: typeof List }[] = [
+  { value: "list", label: "List", icon: List },
+  { value: "board", label: "Board", icon: Columns3 },
+  { value: "calendar", label: "Calendar", icon: CalendarDays },
+  { value: "table", label: "Table", icon: Table2 },
 ];
 
 const DUE_OPTIONS = [
@@ -50,8 +63,10 @@ export function ProjectView({
   members,
   canEdit,
   nowIso,
+  projectName,
 }: {
   projectId: string;
+  projectName: string;
   tasks: TaskRowTask[];
   sections: Section[];
   members: Member[];
@@ -59,7 +74,19 @@ export function ProjectView({
   /** The server's idea of "now", so both sides agree on what is overdue. */
   nowIso: string;
 }) {
-  const now = new Date(nowIso);
+  // Memoised for the same reason as in the calendar: this Date is passed into
+  // TaskList, whose grouping useMemo depends on it. A fresh object each render
+  // would rebuild every group on every render. ESLint only flags the case
+  // where the memo is in the SAME file, so this one has to be caught by hand.
+  const now = useMemo(() => new Date(nowIso), [nowIso]);
+
+  const [view, setView] = useQueryState("view", {
+    defaultValue: "list" as ViewMode,
+    clearOnDefault: true,
+    // Which view you are in IS a navigation step — Back should return you to
+    // the list, not out of the project.
+    history: "push",
+  });
 
   const [group, setGroup] = useQueryState("group", {
     defaultValue: "section" as GroupBy,
@@ -89,6 +116,14 @@ export function ProjectView({
   });
 
   const [detail, setDetail] = useState<TaskDetail | null>(null);
+
+  /** Re-reads the open task, so the drawer's controlled fields stay truthful. */
+  const reloadDetail = useCallback(() => {
+    if (!openTaskId) return;
+    void fetchTaskDetail({ taskId: openTaskId }).then((result) => {
+      if (result.ok && result.data) setDetail(result.data as unknown as TaskDetail);
+    });
+  }, [openTaskId]);
 
   /**
    * Loads the drawer's contents whenever the URL names a task.
@@ -128,22 +163,50 @@ export function ProjectView({
 
   return (
     <div className="space-y-4">
+      {/* View switcher — a tablist, so arrow keys move between views. */}
+      <div role="tablist" aria-label="View" className="flex flex-wrap gap-1">
+        {VIEWS.map(({ value, label, icon: Icon }) => {
+          const selected = view === value;
+          return (
+            <button
+              key={value}
+              role="tab"
+              aria-selected={selected}
+              onClick={() => void setView(value)}
+              className={
+                "font-display flex items-center gap-1.5 rounded-[--radius-md] px-2.5 py-1.5 text-sm font-medium " +
+                "transition-colors duration-[--dur-fast] ease-[--ease-out] " +
+                (selected
+                  ? "bg-accent-soft text-ink"
+                  : "text-muted hover:bg-surface-2 hover:text-ink")
+              }
+            >
+              <Icon className="size-4" />
+              {label}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-1.5 text-xs">
-          <span className="text-muted">Group by</span>
-          <Select
-            value={group}
-            onChange={(e) => void setGroup(e.target.value as GroupBy)}
-            aria-label="Group by"
-            className="h-8 w-32"
-          >
-            {GROUP_OPTIONS.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </Select>
-        </label>
+        {/* Grouping only means something in the List view. */}
+        {view === "list" && (
+          <label className="flex items-center gap-1.5 text-xs">
+            <span className="text-muted">Group by</span>
+            <Select
+              value={group}
+              onChange={(e) => void setGroup(e.target.value as GroupBy)}
+              aria-label="Group by"
+              className="h-8 w-32"
+            >
+              {GROUP_OPTIONS.map((o) => (
+                <option key={o.value} value={o.value}>
+                  {o.label}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
 
         <Select
           value={due}
@@ -177,22 +240,55 @@ export function ProjectView({
         </span>
       </div>
 
-      <TaskList
-        projectId={projectId}
-        tasks={tasks}
-        sections={sections}
-        members={members}
-        groupBy={group as GroupBy}
-        now={now}
-        canEdit={canEdit}
-        onOpenTask={(id) => void setOpenTaskId(id)}
-      />
+      {view === "list" && (
+        <TaskList
+          projectId={projectId}
+          tasks={tasks}
+          sections={sections}
+          members={members}
+          groupBy={group as GroupBy}
+          now={now}
+          canEdit={canEdit}
+          onOpenTask={(id) => void setOpenTaskId(id)}
+        />
+      )}
+
+      {view === "board" && (
+        <BoardView
+          projectId={projectId}
+          tasks={tasks}
+          sections={sections}
+          members={members}
+          canEdit={canEdit}
+          nowIso={nowIso}
+          onOpenTask={(id) => void setOpenTaskId(id)}
+        />
+      )}
+
+      {view === "calendar" && (
+        <CalendarView
+          tasks={tasks}
+          nowIso={nowIso}
+          canEdit={canEdit}
+          onOpenTask={(id) => void setOpenTaskId(id)}
+        />
+      )}
+
+      {view === "table" && (
+        <TableView
+          tasks={tasks}
+          nowIso={nowIso}
+          projectName={projectName}
+          onOpenTask={(id) => void setOpenTaskId(id)}
+        />
+      )}
 
       <TaskDrawer
         task={openTask}
         members={members}
         canEdit={canEdit}
         onClose={() => void setOpenTaskId("")}
+        onMutated={reloadDetail}
       />
 
       {openTaskId && !openTask && (

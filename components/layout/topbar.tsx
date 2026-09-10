@@ -3,6 +3,7 @@
 import { Search } from "lucide-react";
 import { useEffect, useState } from "react";
 
+import { CommandPalette, openCommandPalette } from "@/components/layout/command-palette";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -36,10 +37,12 @@ export function Topbar() {
         scrolled ? "glass border-x-0 border-t-0" : "bg-bg border-b border-transparent",
       )}
     >
-      {/* Command palette entry point — wired up in Phase 3. */}
+      <CommandPalette />
+
       <Button
         variant="secondary"
         size="sm"
+        onClick={openCommandPalette}
         className="text-muted font-ui w-full max-w-xs justify-start gap-2 font-normal"
       >
         <Search />

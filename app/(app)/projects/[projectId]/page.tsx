@@ -81,6 +81,7 @@ export default async function ProjectPage({
 
       <ProjectView
         projectId={project.id}
+        projectName={project.name}
         sections={sections}
         members={members.map((m) => m.profile)}
         canEdit={canEdit}

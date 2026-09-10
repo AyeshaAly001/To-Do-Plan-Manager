@@ -67,11 +67,21 @@ export function TaskDrawer({
   members,
   canEdit,
   onClose,
+  onMutated,
 }: {
   task: TaskDetail | null;
   members: { id: string; fullName: string | null; email: string }[];
   canEdit: boolean;
   onClose: () => void;
+  /**
+   * Called after a successful change so the owner can refetch this task.
+   *
+   * Necessary because the drawer's fields are CONTROLLED by `task`, which is
+   * fetched separately from the page's server data. `router.refresh()` updates
+   * the list behind the drawer but not this object — so without a refetch a
+   * status change would visibly snap back to the old value.
+   */
+  onMutated?: () => void;
 }) {
   const router = useRouter();
   const reduced = usePrefersReducedMotion();
@@ -103,8 +113,14 @@ export function TaskDrawer({
     setError(undefined);
     start(async () => {
       const result = await fn();
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      // Refresh the page behind, and refetch this task so the drawer's own
+      // controlled fields reflect what was just saved.
       router.refresh();
+      onMutated?.();
     });
   };
 
