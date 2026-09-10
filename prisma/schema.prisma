@@ -59,10 +59,15 @@ model Profile {
   activities      ActivityLog[]
   notifications   Notification[]
 
-  ownedProjects  Project[]       @relation("ProjectOwner")
-  projectAccess  ProjectMember[]
-  createdTasks   Task[]          @relation("TaskCreator")
-  assignedTasks  TaskAssignee[]
+  ownedProjects Project[]       @relation("ProjectOwner")
+  projectAccess ProjectMember[]
+  createdTasks  Task[]          @relation("TaskCreator")
+  assignedTasks TaskAssignee[]
+
+  comments    Comment[]    @relation("CommentAuthor")
+  mentionedIn Mention[]    @relation("MentionTarget")
+  reactions   Reaction[]   @relation("ReactionAuthor")
+  uploads     Attachment[] @relation("AttachmentUploader")
 
   @@map("profiles")
 }
@@ -396,9 +401,11 @@ model Task {
   /// Unsupported so Prisma leaves it alone instead of trying to drop it.
   searchVector Unsupported("tsvector")? @map("search_vector")
 
-  assignees  TaskAssignee[]
-  labels     TaskLabel[]
-  checklist  ChecklistItem[]
+  assignees   TaskAssignee[]
+  labels      TaskLabel[]
+  checklist   ChecklistItem[]
+  comments    Comment[]
+  attachments Attachment[]
 
   @@unique([projectId, number])
   // The List and Board views always read "one project, ordered by rank".
@@ -471,4 +478,106 @@ model ChecklistItem {
 
   @@index([taskId, rank])
   @@map("checklist_items")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 — collaboration
+// ---------------------------------------------------------------------------
+
+/// A comment on a task. Threaded one level: replies point at a parent, but a
+/// reply cannot itself have replies — deep nesting makes a discussion
+/// unreadable and is a common source of orphaned sub-threads.
+model Comment {
+  id String @id @default(uuid()) @db.Uuid
+
+  taskId String @map("task_id") @db.Uuid
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  authorId String  @map("author_id") @db.Uuid
+  author   Profile @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  /// Rich text document. `bodyText` is the plain-text mirror, used for search,
+  /// notification previews and email — none of which can render a document.
+  body     Json?
+  bodyText String @map("body_text")
+
+  parentCommentId String?   @map("parent_comment_id") @db.Uuid
+  parentComment   Comment?  @relation("CommentReplies", fields: [parentCommentId], references: [id], onDelete: Cascade)
+  replies         Comment[] @relation("CommentReplies")
+
+  editedAt  DateTime? @map("edited_at")
+  /// Soft delete: a removed comment leaves a "deleted" placeholder so replies
+  /// beneath it still make sense, rather than losing their context.
+  deletedAt DateTime? @map("deleted_at")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  mentions  Mention[]
+  reactions Reaction[]
+
+  @@index([taskId, createdAt])
+  @@index([authorId])
+  @@map("comments")
+}
+
+/// Who was mentioned where. A row per mention rather than parsing the body on
+/// read, so "mentions of me" is an indexed query.
+model Mention {
+  id String @id @default(uuid()) @db.Uuid
+
+  commentId String  @map("comment_id") @db.Uuid
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  mentionedProfileId String  @map("mentioned_profile_id") @db.Uuid
+  mentionedProfile   Profile @relation("MentionTarget", fields: [mentionedProfileId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([commentId, mentionedProfileId])
+  @@index([mentionedProfileId])
+  @@map("mentions")
+}
+
+/// Emoji reaction. Unique per (comment, profile, emoji), so clicking twice
+/// toggles rather than stacking.
+model Reaction {
+  id String @id @default(uuid()) @db.Uuid
+
+  commentId String  @map("comment_id") @db.Uuid
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  profileId String  @map("profile_id") @db.Uuid
+  profile   Profile @relation("ReactionAuthor", fields: [profileId], references: [id], onDelete: Cascade)
+
+  /// The emoji itself, not a shortcode — no lookup table to keep in step.
+  emoji String
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([commentId, profileId, emoji])
+  @@index([commentId])
+  @@map("reactions")
+}
+
+/// A file attached to a task, stored in Supabase Storage.
+model Attachment {
+  id String @id @default(uuid()) @db.Uuid
+
+  taskId String @map("task_id") @db.Uuid
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  /// Path within the storage bucket. The bucket is PRIVATE, so this is never
+  /// a public URL — downloads go through a short-lived signed URL.
+  storagePath String @map("storage_path")
+  filename    String
+  mimeType    String @map("mime_type")
+  sizeBytes   Int    @map("size_bytes")
+
+  uploadedById String  @map("uploaded_by_id") @db.Uuid
+  uploadedBy   Profile @relation("AttachmentUploader", fields: [uploadedById], references: [id])
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([taskId])
+  @@map("attachments")
 }
