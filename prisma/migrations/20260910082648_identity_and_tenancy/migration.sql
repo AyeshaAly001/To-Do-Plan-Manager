@@ -232,10 +232,7 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
-CREATE TRIGGER on_auth_user_created
-  AFTER INSERT ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
 
 -- Mirror email changes made through Supabase Auth.
 CREATE OR REPLACE FUNCTION public.handle_auth_user_updated()
@@ -254,10 +251,7 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS on_auth_user_updated ON auth.users;
-CREATE TRIGGER on_auth_user_updated
-  AFTER UPDATE ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_auth_user_updated();
+
 
 -- Deleting the auth user removes the profile. Cascades from there take care
 -- of memberships, notifications and so on.
@@ -273,7 +267,38 @@ BEGIN
 END;
 $$;
 
-DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
-CREATE TRIGGER on_auth_user_deleted
-  AFTER DELETE ON auth.users
-  FOR EACH ROW EXECUTE FUNCTION public.handle_auth_user_deleted();
+-- ---------------------------------------------------------------------------
+-- Attach the triggers, but only where auth.users actually exists.
+--
+-- Prisma builds a SHADOW DATABASE to diff the schema, and that database is a
+-- plain Postgres instance with no Supabase `auth` schema. Creating a trigger
+-- ON auth.users there fails with "schema auth does not exist" and breaks every
+-- future `prisma migrate dev`. The functions above are created unconditionally
+-- (plpgsql bodies are not resolved until they run); only the trigger
+-- attachment needs guarding.
+-- ---------------------------------------------------------------------------
+DO $guard$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.tables
+     WHERE table_schema = 'auth' AND table_name = 'users'
+  ) THEN
+    DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
+    CREATE TRIGGER on_auth_user_created
+      AFTER INSERT ON auth.users
+      FOR EACH ROW EXECUTE FUNCTION public.handle_new_auth_user();
+
+    DROP TRIGGER IF EXISTS on_auth_user_updated ON auth.users;
+    CREATE TRIGGER on_auth_user_updated
+      AFTER UPDATE ON auth.users
+      FOR EACH ROW EXECUTE FUNCTION public.handle_auth_user_updated();
+
+    DROP TRIGGER IF EXISTS on_auth_user_deleted ON auth.users;
+    CREATE TRIGGER on_auth_user_deleted
+      AFTER DELETE ON auth.users
+      FOR EACH ROW EXECUTE FUNCTION public.handle_auth_user_deleted();
+  ELSE
+    RAISE NOTICE 'auth.users not present (shadow database) - skipping auth triggers';
+  END IF;
+END
+$guard$;

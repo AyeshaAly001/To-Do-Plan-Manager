@@ -53,11 +53,16 @@ model Profile {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  memberships       WorkspaceMember[]
-  ownedWorkspaces   Workspace[]       @relation("WorkspaceOwner")
-  sentInvitations   Invitation[]      @relation("InvitationInviter")
-  activities        ActivityLog[]
-  notifications     Notification[]
+  memberships     WorkspaceMember[]
+  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+  sentInvitations Invitation[]      @relation("InvitationInviter")
+  activities      ActivityLog[]
+  notifications   Notification[]
+
+  ownedProjects  Project[]       @relation("ProjectOwner")
+  projectAccess  ProjectMember[]
+  createdTasks   Task[]          @relation("TaskCreator")
+  assignedTasks  TaskAssignee[]
 
   @@map("profiles")
 }
@@ -98,6 +103,8 @@ model Workspace {
   members     WorkspaceMember[]
   invitations Invitation[]
   activities  ActivityLog[]
+  projects    Project[]
+  labels      Label[]
 
   @@index([ownerId])
   @@map("workspaces")
@@ -223,4 +230,245 @@ model SystemHealth {
   note      String?
 
   @@map("system_health")
+}
+
+// ---------------------------------------------------------------------------
+// Phase 2 — projects, sections, tasks
+// ---------------------------------------------------------------------------
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  ARCHIVED
+
+  @@map("project_status")
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  IN_REVIEW
+  BLOCKED
+  DONE
+  CANCELLED
+
+  @@map("task_status")
+}
+
+enum TaskPriority {
+  NONE
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+
+  @@map("task_priority")
+}
+
+model Project {
+  id          String  @id @default(uuid()) @db.Uuid
+  workspaceId String  @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name        String
+  /// Short code used in task references, e.g. ASH-42. Uppercase, 2-6 chars.
+  key         String
+  description String?
+  /// Token name from the design system palette, never a raw colour.
+  color       String  @default("accent")
+  /// Lucide icon name.
+  icon        String  @default("folder-kanban")
+
+  status      ProjectStatus @default(ACTIVE)
+  startDate   DateTime?     @map("start_date") @db.Date
+  targetDate  DateTime?     @map("target_date") @db.Date
+
+  ownerId String  @map("owner_id") @db.Uuid
+  owner   Profile @relation("ProjectOwner", fields: [ownerId], references: [id])
+
+  /// When true, only ProjectMember rows may see it — workspace membership is
+  /// not enough. Enforced in the query layer, not by RLS.
+  isPrivate Boolean @default(false) @map("is_private")
+
+  /// Monotonic counter behind task numbering. Incremented inside the same
+  /// transaction that creates a task, so numbers never collide or repeat.
+  taskCounter Int @default(0) @map("task_counter")
+
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  archivedAt DateTime? @map("archived_at")
+
+  members  ProjectMember[]
+  sections Section[]
+  tasks    Task[]
+
+  // Task keys are unique per workspace, not globally.
+  @@unique([workspaceId, key])
+  @@index([workspaceId, status])
+  @@index([ownerId])
+  @@map("projects")
+}
+
+/// Per-project access, only consulted when `Project.isPrivate`.
+model ProjectMember {
+  id String @id @default(uuid()) @db.Uuid
+
+  projectId String  @map("project_id") @db.Uuid
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  profileId String  @map("profile_id") @db.Uuid
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  addedAt DateTime @default(now()) @map("added_at")
+
+  @@unique([projectId, profileId])
+  @@index([profileId])
+  @@map("project_members")
+}
+
+/// An ordered group within a project. Doubles as the default board column.
+model Section {
+  id String @id @default(uuid()) @db.Uuid
+
+  projectId String  @map("project_id") @db.Uuid
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name String
+  /// Fractional index, so reordering touches one row (see lib/rank).
+  rank String
+  /// Soft warning threshold on the board; null means no limit.
+  wipLimit Int? @map("wip_limit")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tasks Task[]
+
+  @@unique([projectId, rank])
+  @@index([projectId])
+  @@map("sections")
+}
+
+model Task {
+  id String @id @default(uuid()) @db.Uuid
+
+  projectId String  @map("project_id") @db.Uuid
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  sectionId String?  @map("section_id") @db.Uuid
+  section   Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  /// Human-facing reference number, unique within the project (ASH-42).
+  number Int
+
+  /// Subtasks. Restrict rather than Cascade: silently deleting a subtree with
+  /// its parent loses work, so the caller must handle children explicitly.
+  parentTaskId String? @map("parent_task_id") @db.Uuid
+  parentTask   Task?   @relation("Subtasks", fields: [parentTaskId], references: [id], onDelete: Restrict)
+  subtasks     Task[]  @relation("Subtasks")
+
+  title String
+  /// Tiptap document. Plain text mirror lives in `descriptionText` for search.
+  description     Json?
+  descriptionText String? @map("description_text")
+
+  status   TaskStatus   @default(TODO)
+  priority TaskPriority @default(NONE)
+
+  startDate DateTime? @map("start_date")
+  dueDate   DateTime? @map("due_date")
+  /// Decimal hours, so half-hour estimates are expressible.
+  estimateHours Decimal? @map("estimate_hours") @db.Decimal(6, 2)
+
+  /// Fractional index within (project, section).
+  rank String
+
+  createdById String  @map("created_by_id") @db.Uuid
+  createdBy   Profile @relation("TaskCreator", fields: [createdById], references: [id])
+
+  completedAt DateTime? @map("completed_at")
+  archivedAt  DateTime? @map("archived_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  /// Maintained by a trigger, not the app — see the migration. Declared
+  /// Unsupported so Prisma leaves it alone instead of trying to drop it.
+  searchVector Unsupported("tsvector")? @map("search_vector")
+
+  assignees  TaskAssignee[]
+  labels     TaskLabel[]
+  checklist  ChecklistItem[]
+
+  @@unique([projectId, number])
+  // The List and Board views always read "one project, ordered by rank".
+  @@index([projectId, rank])
+  @@index([projectId, status])
+  @@index([dueDate])
+  @@index([parentTaskId])
+  @@index([sectionId])
+  @@map("tasks")
+}
+
+/// Multiple assignees per task, so this is a join table rather than a column.
+model TaskAssignee {
+  id String @id @default(uuid()) @db.Uuid
+
+  taskId String @map("task_id") @db.Uuid
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  profileId String  @map("profile_id") @db.Uuid
+  profile   Profile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  assignedAt DateTime @default(now()) @map("assigned_at")
+
+  @@unique([taskId, profileId])
+  // Powers "My tasks" across every project.
+  @@index([profileId])
+  @@map("task_assignees")
+}
+
+model Label {
+  id String @id @default(uuid()) @db.Uuid
+
+  workspaceId String    @map("workspace_id") @db.Uuid
+  workspace   Workspace @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+
+  name String
+  /// Design-system token name, not a raw colour.
+  color String @default("neutral")
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  tasks TaskLabel[]
+
+  @@unique([workspaceId, name])
+  @@map("labels")
+}
+
+model TaskLabel {
+  taskId  String @map("task_id") @db.Uuid
+  task    Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  labelId String @map("label_id") @db.Uuid
+  label   Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
+  @@map("task_labels")
+}
+
+/// Lightweight steps inside a task — deliberately not full subtasks, which
+/// carry assignees, dates and their own subtree.
+model ChecklistItem {
+  id String @id @default(uuid()) @db.Uuid
+
+  taskId String @map("task_id") @db.Uuid
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  title  String
+  isDone Boolean @default(false) @map("is_done")
+  rank   String
+
+  @@index([taskId, rank])
+  @@map("checklist_items")
 }
