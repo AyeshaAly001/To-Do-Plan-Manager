@@ -13,9 +13,34 @@ import { z } from "zod";
  * workspace membership, so a forged list buys nothing.
  */
 
+/**
+ * A JSON value, validated recursively.
+ *
+ * `z.unknown()` was wrong twice over. It let ANY value into a JSONB column
+ * without inspection, and it passed the value through untouched — so a
+ * non-plain object arriving from a client component reached Prisma as an
+ * opaque React client reference and blew up with "cannot access toStringTag
+ * on the server".
+ *
+ * Parsing with this rebuilds the value as plain data, which both validates the
+ * shape and guarantees something Prisma can serialise.
+ */
+type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 export const createCommentSchema = z.object({
   taskId: z.string().uuid(),
-  body: z.unknown().optional(),
+  body: jsonValueSchema.nullable().optional(),
   bodyText: z
     .string()
     .trim()
@@ -27,7 +52,7 @@ export const createCommentSchema = z.object({
 
 export const updateCommentSchema = z.object({
   commentId: z.string().uuid(),
-  body: z.unknown().optional(),
+  body: jsonValueSchema.nullable().optional(),
   bodyText: z.string().trim().min(1, "Write something first").max(20_000),
   mentionedProfileIds: z.array(z.string().uuid()).max(50).optional(),
 });

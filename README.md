@@ -4,8 +4,27 @@ Team to-do and plan manager. Multi-tenant workspaces, projects broken into
 tasks and subtasks, planned across list / board / calendar / timeline views,
 with a set of dashboards over the top.
 
-**Status: Phase 0 — foundation and design system.** The full phase plan lives in
+**Status: Phase 4 complete — collaboration and realtime.** Phases 5–7 (planning
+layer, dashboards, hardening) are still ahead; the full phase plan lives in
 `docs/PLAN.md`.
+
+---
+
+## What works today
+
+- **Accounts and workspaces** — email/password sign-in, magic link, OAuth hooks,
+  password reset. Workspaces with `OWNER` / `ADMIN` / `MEMBER` / `GUEST` roles,
+  tokened email invitations, member management, avatar upload.
+- **Tasks** — projects with a key prefix, sections, subtasks, multi-assignee,
+  priority, dates, estimates, labels and checklists. Drag reordering on a
+  fractional rank, inline edit, multi-select bulk actions, saved filters in the
+  URL, full-text search, and quick-add that parses `tomorrow 5pm !high @sam`.
+- **Views** — list, board, calendar, table, My Tasks and a `⌘K` palette, all
+  reading the same filtered dataset with the view and filters in the URL.
+- **Collaboration** — threaded comments with `@`-mentions and reactions, file
+  attachments through signed URLs, an activity feed written by the action
+  wrapper, an in-app inbox with email preferences, and realtime updates plus
+  presence avatars on an open task.
 
 ---
 
@@ -129,20 +148,26 @@ text-danger`. The status colors are solved so this composite still clears AA —
 
 ## Scripts
 
-| Script                   | What it does                               |
-| ------------------------ | ------------------------------------------ |
-| `npm run dev`            | Dev server                                 |
-| `npm run build`          | Production build                           |
-| `npm run verify`         | Everything CI runs                         |
-| `npm run typecheck`      | `tsc --noEmit`                             |
-| `npm run lint`           | ESLint                                     |
-| `npm run lint:colors`    | Fails on hardcoded colors in `components/` |
-| `npm run format`         | Prettier write                             |
-| `npm run audit:contrast` | Full WCAG table for both themes            |
-| `npm run test`           | Vitest                                     |
-| `npm run test:e2e`       | Playwright                                 |
-| `npm run db:migrate`     | `prisma migrate dev`                       |
-| `npm run db:studio`      | Prisma Studio                              |
+| Script                      | What it does                               |
+| --------------------------- | ------------------------------------------ |
+| `npm run dev`               | Dev server                                 |
+| `npm run build`             | Production build                           |
+| `npm run verify`            | Everything CI runs                         |
+| `npm run typecheck`         | `tsc --noEmit`                             |
+| `npm run lint`              | ESLint                                     |
+| `npm run lint:colors`       | Fails on hardcoded colors in `components/` |
+| `npm run format`            | Prettier write                             |
+| `npm run audit:contrast`    | Full WCAG table for both themes            |
+| `npm run test`              | Vitest                                     |
+| `npm run test:e2e`          | Playwright                                 |
+| `npm run db:migrate`        | `prisma migrate dev`                       |
+| `npm run db:studio`         | Prisma Studio                              |
+| `npm run db:healthcheck`    | Round-trips a query through Prisma         |
+| `npm run verify:security`   | Asserts RLS, grants, triggers, key posture |
+| `npm run dev:user`          | Creates a confirmed user for e2e runs      |
+| `npm run dev:clean`         | Deletes test projects the e2e suite leaves |
+| `npm run provision:env`     | Writes `.env.local` from the Supabase API  |
+| `npm run provision:storage` | Creates the private attachments bucket     |
 
 ---
 

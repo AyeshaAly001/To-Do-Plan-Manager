@@ -82,6 +82,16 @@ export default async function ProjectPage({
       <ProjectView
         projectId={project.id}
         projectName={project.name}
+        currentUser={{
+          id: user.id,
+          name: members.find((m) => m.profile.id === user.id)?.profile.fullName ?? user.email,
+        }}
+        permissions={{
+          canComment: can(workspace.role, "comment.create"),
+          canModerateComments: can(workspace.role, "comment.delete_any"),
+          canUpload: can(workspace.role, "attachment.upload"),
+          canDeleteAnyFile: can(workspace.role, "attachment.delete_any"),
+        }}
         sections={sections}
         members={members.map((m) => m.profile)}
         canEdit={canEdit}

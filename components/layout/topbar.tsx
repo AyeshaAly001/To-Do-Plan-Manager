@@ -19,7 +19,7 @@ import { cn } from "@/lib/utils";
  * The listener is passive and only flips a boolean, so it does no layout work
  * per scroll event.
  */
-export function Topbar() {
+export function Topbar({ notifications }: { notifications?: React.ReactNode }) {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
@@ -53,6 +53,7 @@ export function Topbar() {
       </Button>
 
       <div className="ml-auto flex items-center gap-1">
+        {notifications}
         <ThemeToggle />
       </div>
     </header>

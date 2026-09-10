@@ -5,6 +5,7 @@ import { Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 
+import { TaskCollab } from "@/components/collab/task-collab";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -68,6 +69,8 @@ export function TaskDrawer({
   canEdit,
   onClose,
   onMutated,
+  currentUser,
+  permissions,
 }: {
   task: TaskDetail | null;
   members: { id: string; fullName: string | null; email: string }[];
@@ -82,6 +85,14 @@ export function TaskDrawer({
    * status change would visibly snap back to the old value.
    */
   onMutated?: () => void;
+  /** Needed for presence and for "is this my comment". */
+  currentUser?: { id: string; name: string };
+  permissions?: {
+    canComment: boolean;
+    canModerateComments: boolean;
+    canUpload: boolean;
+    canDeleteAnyFile: boolean;
+  };
 }) {
   const router = useRouter();
   const reduced = usePrefersReducedMotion();
@@ -403,6 +414,29 @@ export function TaskDrawer({
                     {label.name}
                   </Badge>
                 ))}
+              </div>
+            )}
+
+            {/* Discussion and files. Only rendered when the caller supplies
+                identity and permissions — My Tasks does not load the member
+                roster, so it opts out rather than showing a broken mention
+                picker. */}
+            {currentUser && permissions && (
+              <div className="border-border mb-5 border-t pt-4">
+                <TaskCollab
+                  taskId={task.id}
+                  currentUser={currentUser}
+                  candidates={members.map((m) => ({
+                    id: m.id,
+                    fullName: m.fullName,
+                    email: m.email,
+                    avatarUrl: null,
+                  }))}
+                  canComment={permissions.canComment}
+                  canModerate={permissions.canModerateComments}
+                  canUpload={permissions.canUpload}
+                  canDeleteAnyFile={permissions.canDeleteAnyFile}
+                />
               </div>
             )}
 

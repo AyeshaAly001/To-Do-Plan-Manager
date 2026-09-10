@@ -1,67 +1,69 @@
 import type { Metadata } from "next";
 
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
-import { EmptyState } from "@/components/ui/empty-state";
+import { InboxList } from "@/components/collab/inbox-list";
+import { ActivityFeed } from "@/components/collab/activity-feed";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageTitle } from "@/components/ui/page-title";
 import { requireWorkspace } from "@/lib/auth/session";
-import { prisma } from "@/lib/db/prisma";
+import { getActivity, getNotifications } from "@/lib/collab/queries";
 
 export const metadata: Metadata = { title: "Inbox" };
 
 /**
- * Notifications.
+ * Notifications, plus recent workspace activity.
  *
- * The table and the query are real; nothing writes to it until Phase 4 adds
- * mentions, assignment alerts and due-soon reminders. So this renders an
- * honest empty state rather than a fake feed — a mocked inbox would be
- * indistinguishable from a broken one.
+ * The two are side by side on purpose: notifications are what was addressed
+ * TO you, activity is everything that happened. Merging them would bury the
+ * former in the latter, which is how an inbox stops being useful.
  */
 export default async function InboxPage() {
-  const { user } = await requireWorkspace();
+  const { user, workspace } = await requireWorkspace();
 
-  const notifications = await prisma.notification.findMany({
-    where: { recipientId: user.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-    select: { id: true, type: true, payload: true, readAt: true, createdAt: true },
-  });
-
-  const unread = notifications.filter((n) => !n.readAt).length;
+  const [notifications, activity] = await Promise.all([
+    getNotifications(user.id, 50),
+    getActivity(workspace, { limit: 25 }),
+  ]);
 
   return (
     <div className="space-y-6">
-      <PageTitle title="Inbox" subtitle={unread > 0 ? `${unread} unread` : "Nothing unread"} />
+      <PageTitle
+        title="Inbox"
+        subtitle={
+          notifications.unreadCount > 0
+            ? `${notifications.unreadCount} unread`
+            : "Nothing unread"
+        }
+      />
 
-      {notifications.length === 0 ? (
-        <EmptyState
-          title="Your inbox is empty"
-          description="Mentions, assignments and due-soon reminders will arrive here once collaboration lands."
-        />
-      ) : (
-        <Card>
-          <CardContent className="p-0">
-            <ul className="divide-border divide-y">
-              {notifications.map((n) => (
-                <li key={n.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                  {!n.readAt && <Badge tone="accent">New</Badge>}
-                  <span className="flex-1 truncate">{n.type}</span>
-                  <time
-                    dateTime={n.createdAt.toISOString()}
-                    className="text-muted shrink-0 text-xs"
-                    data-numeric
-                  >
-                    {n.createdAt.toLocaleDateString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                    })}
-                  </time>
-                </li>
-              ))}
-            </ul>
-          </CardContent>
-        </Card>
-      )}
+      <InboxList
+        unreadCount={notifications.unreadCount}
+        items={notifications.items.map((n) => ({
+          id: n.id,
+          type: n.type,
+          payload: (n.payload ?? {}) as Record<string, unknown>,
+          readAt: n.readAt?.toISOString() ?? null,
+          createdAt: n.createdAt.toISOString(),
+        }))}
+      />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Workspace activity</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ActivityFeed
+            entries={activity.map((a) => ({
+              id: a.id,
+              entityType: a.entityType,
+              entityId: a.entityId,
+              action: a.action,
+              diff: a.diff,
+              createdAt: a.createdAt.toISOString(),
+              actor: a.actor,
+            }))}
+          />
+        </CardContent>
+      </Card>
     </div>
   );
 }

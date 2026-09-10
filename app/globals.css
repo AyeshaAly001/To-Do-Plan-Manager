@@ -349,3 +349,30 @@
     transform: none;
   }
 }
+
+/* ===========================================================================
+   Tiptap editor
+   ---------------------------------------------------------------------------
+   The placeholder lives here rather than in the component because Tiptap
+   renders an empty <p> that only CSS can label, and because a stylesheet rule
+   avoids depending on styled-jsx being available.
+   =========================================================================== */
+.tiptap:has(> p:only-child:empty)::before,
+.tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: var(--muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+/* Mentions inside a RENDERED comment (not the editor). Same tint as the
+   editor's, so a mention looks identical whether being written or read. */
+.comment-body .mention,
+.tiptap .mention {
+  background: var(--accent-soft);
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 0.0625rem 0.25rem;
+  font-weight: 500;
+}

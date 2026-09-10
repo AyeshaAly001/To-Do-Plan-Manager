@@ -2,7 +2,8 @@
 
 import { CalendarDays, Columns3, List, Table2 } from "lucide-react";
 import { useQueryState } from "nuqs";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { BoardView } from "@/components/tasks/board-view";
 import { CalendarView } from "@/components/tasks/calendar-view";
@@ -15,7 +16,9 @@ import {
   type Section,
 } from "@/components/tasks/task-list";
 import type { TaskRowTask } from "@/components/tasks/task-row";
+import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/input";
+import { useRealtimeChannel } from "@/lib/realtime/use-realtime";
 import { fetchTaskDetail } from "@/lib/tasks/read-actions";
 
 const GROUP_OPTIONS: { value: GroupBy; label: string }[] = [
@@ -64,6 +67,8 @@ export function ProjectView({
   canEdit,
   nowIso,
   projectName,
+  currentUser,
+  permissions,
 }: {
   projectId: string;
   projectName: string;
@@ -73,6 +78,13 @@ export function ProjectView({
   canEdit: boolean;
   /** The server's idea of "now", so both sides agree on what is overdue. */
   nowIso: string;
+  currentUser: { id: string; name: string };
+  permissions: {
+    canComment: boolean;
+    canModerateComments: boolean;
+    canUpload: boolean;
+    canDeleteAnyFile: boolean;
+  };
 }) {
   // Memoised for the same reason as in the calendar: this Date is passed into
   // TaskList, whose grouping useMemo depends on it. A fresh object each render
@@ -114,6 +126,30 @@ export function ProjectView({
     clearOnDefault: true,
     history: "push",
   });
+
+  const router = useRouter();
+
+  /**
+   * Live task updates for everyone looking at this project.
+   *
+   * The event carries no row data (RLS is deny-all for the browser key), so a
+   * change simply triggers a refetch through the authorized server path. The
+   * board holds an `override` during a drag which takes precedence over server
+   * data, so refreshing mid-drag cannot yank a card out from under the cursor.
+   */
+  const { version: taskVersion } = useRealtimeChannel({
+    channel: `project:${projectId}`,
+    tables: ["tasks"],
+  });
+
+  // Skip the first tick: `version` starts at 0 and refreshing on mount would
+  // duplicate the render the server just did.
+  const lastVersion = useRef(0);
+  useEffect(() => {
+    if (taskVersion === lastVersion.current) return;
+    lastVersion.current = taskVersion;
+    router.refresh();
+  }, [taskVersion, router]);
 
   const [detail, setDetail] = useState<TaskDetail | null>(null);
 
@@ -235,8 +271,13 @@ export function ProjectView({
           ))}
         </Select>
 
-        <span className="text-muted ml-auto text-xs" data-numeric>
-          {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+        <span className="ml-auto flex items-center gap-2">
+          {/* Only shown once something has actually arrived, so it reads as
+              "this is live" rather than as permanent chrome. */}
+          {taskVersion > 0 && <Badge tone="info">Updated live</Badge>}
+          <span className="text-muted text-xs" data-numeric>
+            {tasks.length} {tasks.length === 1 ? "task" : "tasks"}
+          </span>
         </span>
       </div>
 
@@ -289,6 +330,8 @@ export function ProjectView({
         canEdit={canEdit}
         onClose={() => void setOpenTaskId("")}
         onMutated={reloadDetail}
+        currentUser={currentUser}
+        permissions={permissions}
       />
 
       {openTaskId && !openTask && (

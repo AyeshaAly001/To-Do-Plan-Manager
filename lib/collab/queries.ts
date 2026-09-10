@@ -137,21 +137,6 @@ export async function getUnreadCount(profileId: string): Promise<number> {
   return prisma.notification.count({ where: { recipientId: profileId, readAt: null } });
 }
 
-/**
- * Members of the workspace, for the mention autocomplete.
- *
- * Scoped to the workspace rather than the project: mentioning a colleague who
- * is not on this project is legitimate — it is how you pull someone in.
- */
-export async function getMentionCandidates(workspace: Membership) {
-  const members = await prisma.workspaceMember.findMany({
-    where: { workspaceId: workspace.workspaceId },
-    orderBy: { joinedAt: "asc" },
-    select: { profile: { select: AUTHOR_SELECT } },
-  });
-  return members.map((m) => m.profile);
-}
-
 /** Guards against a task id from another tenant reaching a collab read. */
 export async function taskIsVisible(
   taskId: string,

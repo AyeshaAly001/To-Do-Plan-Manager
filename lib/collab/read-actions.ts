@@ -3,12 +3,7 @@
 import { z } from "zod";
 
 import { authedAction, authedUserAction } from "@/lib/auth/action";
-import {
-  getMentionCandidates,
-  getTaskAttachments,
-  getTaskComments,
-  taskIsVisible,
-} from "@/lib/collab/queries";
+import { getTaskAttachments, getTaskComments, taskIsVisible } from "@/lib/collab/queries";
 import { prisma } from "@/lib/db/prisma";
 import { markNotificationsSchema } from "@/lib/validation/comment";
 
@@ -63,12 +58,6 @@ export const fetchAttachments = authedAction({
     const attachments = await getTaskAttachments(taskId);
     return attachments.map((a) => ({ ...a, createdAt: a.createdAt.toISOString() }));
   },
-});
-
-export const fetchMentionCandidates = authedAction({
-  capability: "task.view",
-  schema: z.object({}),
-  handler: async (_input, ctx) => getMentionCandidates(ctx.workspace),
 });
 
 /**

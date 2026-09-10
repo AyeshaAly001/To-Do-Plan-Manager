@@ -3,7 +3,9 @@ import { NuqsAdapter } from "nuqs/adapters/next/app";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Topbar } from "@/components/layout/topbar";
 import { MotionProvider } from "@/components/motion-provider";
+import { NotificationBell } from "@/components/collab/notification-bell";
 import { getMemberships, requireWorkspace } from "@/lib/auth/session";
+import { getNotifications } from "@/lib/collab/queries";
 
 /**
  * Shell for every authenticated, workspace-scoped route.
@@ -19,7 +21,12 @@ import { getMemberships, requireWorkspace } from "@/lib/auth/session";
  */
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const { user, workspace } = await requireWorkspace();
-  const memberships = await getMemberships(user.id);
+  const [memberships, notifications] = await Promise.all([
+    getMemberships(user.id),
+    // Seeded server-side so the badge is correct on first paint rather than
+    // popping in after a client fetch.
+    getNotifications(user.id, 12),
+  ]);
 
   return (
     // NuqsAdapter lets view state (grouping, filters, the open task) live in
@@ -30,7 +37,20 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <div className="flex min-h-dvh">
           <Sidebar user={user} workspace={workspace} memberships={memberships} />
           <div className="flex min-w-0 flex-1 flex-col">
-            <Topbar />
+            <Topbar
+              notifications={
+                <NotificationBell
+                  initialUnread={notifications.unreadCount}
+                  initialItems={notifications.items.map((n) => ({
+                    id: n.id,
+                    type: n.type,
+                    payload: (n.payload ?? {}) as Record<string, unknown>,
+                    readAt: n.readAt?.toISOString() ?? null,
+                    createdAt: n.createdAt.toISOString(),
+                  }))}
+                />
+              }
+            />
             <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-6 sm:px-6">
               {children}
             </main>

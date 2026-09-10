@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ProjectStatus, TaskPriority, TaskStatus } from "@/lib/generated/prisma/enums";
+import { jsonValueSchema } from "@/lib/validation/comment";
 
 /** Design-system token names. A raw colour would break theming. */
 export const PROJECT_COLORS = [
@@ -98,8 +99,14 @@ export const createTaskSchema = z.object({
 export const updateTaskSchema = z.object({
   taskId: z.string().uuid(),
   title: z.string().trim().min(1).max(500).optional(),
-  /** Tiptap JSON plus the plain-text mirror the search vector indexes. */
-  description: z.unknown().nullable().optional(),
+  /**
+   * Tiptap JSON plus the plain-text mirror the search vector indexes.
+   *
+   * Validated as real JSON, not `unknown`: the same hazard as comment bodies —
+   * an unvalidated value both skips inspection on the way into JSONB and can
+   * reach Prisma as an opaque client reference.
+   */
+  description: jsonValueSchema.nullable().optional(),
   descriptionText: z.string().max(50_000).nullable().optional(),
   status: z.enum(TaskStatus).optional(),
   priority: z.enum(TaskPriority).optional(),
